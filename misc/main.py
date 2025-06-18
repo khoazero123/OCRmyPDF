@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Annotated, Literal
 import os
+import requests
 
 # Get max file size in MB from environment variable
 max_file_size_in_mb = int(os.getenv("MAX_FILE_SIZE", 100))
@@ -63,27 +64,60 @@ async def ocr_pdf(
     jbig2_lossy: bool = False, 
     jbig2_threshold: Annotated[int, Query(ge=0, le=100), "JBIG2 threshold"] = 0, 
     jobs: Annotated[int, Query(ge=1, le=os.cpu_count()), "Threads"] = os.cpu_count(),
-    file: UploadFile = File(...)
+    file: UploadFile|None|str = None,
+    file_url: str = None,
 ):
-    # Check if file ext is .pdf or .jpg, .jpeg, .png, .gif, .bmp, .tiff, .webp
-    if not file.filename.lower().endswith((".pdf", ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp")):
-        raise HTTPException(status_code=400, detail="File must be a PDF or image")
-    # check file size > 0
-    if file.size == 0:
-        print(f"File {file.filename} is empty")
-        raise HTTPException(status_code=400, detail="File is empty")
-    # check file size < max_file_size
-    if file.size > (max_file_size_in_mb * 1024 * 1024):
-        print(f"File {file.filename} is too large, max size is {max_file_size_in_mb} MB")
-        raise HTTPException(status_code=400, detail=f"File size must be less than {max_file_size_in_mb} MB")
+    if not file and not file_url:
+        raise HTTPException(status_code=400, detail="File or file_url is required")
+    if file and file_url:
+        raise HTTPException(status_code=400, detail="Only one of file or file_url is allowed")
     
-    print(f"Processing file: {file.filename} with size {file.size} bytes")
+    if file:
+        if file and not file.filename.lower().endswith((".pdf", ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp")):
+            raise HTTPException(status_code=400, detail="File must be a PDF or image")
+        # check file size > 0
+        file_size = file.size
+        if file.size == 0:
+            print(f"File {file.filename} is empty")
+            raise HTTPException(status_code=400, detail="File is empty")
+        
+        file_name = file.filename
+        print(f"Processing file: {file.filename} with size {file.size} bytes")
 
-    # Save uploaded file to a temporary file
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as input_tmp:
-        input_tmp.write(await file.read())
-        input_tmp.flush()
-        input_path = input_tmp.name
+        # Save uploaded file to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as input_tmp:
+            input_tmp.write(await file.read())
+            input_tmp.flush()
+            input_path = input_tmp.name
+
+    elif file_url:
+        if not file_url.lower().endswith((".pdf", ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp")):
+            raise HTTPException(status_code=400, detail="File url must be a PDF or image")
+        # get basename of file_url
+        file_name = os.path.basename(file_url)
+        # download file from url
+        print(f"Downloading file from url: {file_url}")
+        response = requests.get(file_url)
+        if response.status_code != 200:
+            raise HTTPException(status_code=400, detail="Failed to download file from url")
+        file_content = response.content
+        file_mime_type = response.headers.get("Content-Type")
+        if not file_mime_type.startswith("application/pdf") and not file_mime_type.startswith("image/"):
+            print(f"File {file_url} is not a PDF or image")
+            raise HTTPException(status_code=400, detail="File is not a PDF or image")
+        # save file to temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as input_tmp:
+            input_tmp.write(file_content)
+            input_tmp.flush()
+            input_path = input_tmp.name
+        # get file size
+        file_size = os.path.getsize(input_path)
+        print(f"File {file_name} downloaded and saved to {input_path} with size {file_size} bytes")
+
+    # check file size < max_file_size
+    if file_size > (max_file_size_in_mb * 1024 * 1024):
+        print(f"File {file_name} is too large, max size is {max_file_size_in_mb} MB")
+        raise HTTPException(status_code=400, detail=f"File size must be less than {max_file_size_in_mb} MB")
 
     # Prepare output file
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as output_tmp:
@@ -96,7 +130,7 @@ async def ocr_pdf(
         args.append("--invalidate-digital-signatures")
     if language:
         args.append(f"--language={language}")
-    if not file.filename.lower().endswith(".pdf") and image_dpi:
+    if not file_name.lower().endswith(".pdf") and image_dpi:
         args.append(f"--image-dpi={image_dpi}")
     if skip_big:
         args.append("--skip-big")
@@ -158,6 +192,7 @@ async def ocr_pdf(
     # Run OCRmyPDF
     proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if proc.returncode != 0 or not Path(output_path).exists():
+        print(f"OCR failed: {proc.stderr.decode()}")
         raise HTTPException(status_code=500, detail=f"OCR failed: {proc.stderr.decode()}")
 
     # Stream the output PDF back to the client
@@ -166,7 +201,7 @@ async def ocr_pdf(
             yield from f
 
     return StreamingResponse(iterfile(), media_type="application/pdf", headers={
-        "Content-Disposition": f"attachment; filename=ocr_{file.filename}"
+        "Content-Disposition": f"attachment; filename=ocr_{file_name}"
     })
 
 if __name__ == "__main__":
