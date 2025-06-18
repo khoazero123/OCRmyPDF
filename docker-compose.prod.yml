@@ -1,0 +1,82 @@
+# ocrmypdf 
+version: "2"
+ 
+services:
+  ocrmypdf-web:
+    image: docker.megavn.net/ocrmypdf/ocrmypdf:latest
+    entrypoint: python
+    command: webservice.py
+    ports:
+      - 8501:8501
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+      - STREAMLIT_CLIENT_TOOLBAR_MODE=minimal
+      - STREAMLIT_SERVER_ENABLE_WEBSOCKET_COMPRESSION=false
+    networks:
+      - default
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      # use letsencrypt ssl
+      - traefik.http.routers.ocrmypdf-streamlit.rule=Host(`ocrmypdf.example.com`)
+      - traefik.http.routers.ocrmypdf-streamlit.entrypoints=web
+      - traefik.http.routers.ocrmypdf-streamlit-https.rule=Host(`ocrmypdf.example.com`)
+      - traefik.http.routers.ocrmypdf-streamlit-https.entrypoints=websecure
+      - traefik.http.routers.ocrmypdf-streamlit-https.tls=true
+      - traefik.http.routers.ocrmypdf-streamlit-https.tls.certresolver=myresolver
+      - traefik.http.services.ocrmypdf-streamlit-https.loadbalancer.server.port=8501
+    mem_limit: 2G
+    cpus: 2
+  ocrmypdf-api:
+    image: docker.megavn.net/ocrmypdf/ocrmypdf:latest
+    entrypoint: python
+    command: /app/misc/main.py
+    ports:
+      - 8502:8000
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+      - MAX_FILE_SIZE=100
+      - API_DOCS_DISABLE=false
+      - API_SERVERS=https://ocrmypdf.example.com/api
+    networks:
+      - default
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+
+      # http
+      - traefik.http.routers.ocrmypdf-fastapi.rule=Host(`ocrmypdf.example.com`) && PathPrefix(`/api`)
+      - traefik.http.middlewares.ocrmypdf-fastapi-stripprefix.stripprefix.prefixes=/api
+      - traefik.http.routers.ocrmypdf-fastapi.entrypoints=web
+      - traefik.http.routers.ocrmypdf-fastapi.service=ocrmypdf-fastapi
+      - traefik.http.routers.ocrmypdf-fastapi.middlewares=ocrmypdf-fastapi-stripprefix
+
+      # https
+      - traefik.http.routers.ocrmypdf-fastapi-https.rule=Host(`ocrmypdf.example.com`) && PathPrefix(`/api`)
+      - traefik.http.routers.ocrmypdf-fastapi-https.entrypoints=websecure
+      - traefik.http.routers.ocrmypdf-fastapi-https.service=ocrmypdf-fastapi
+      - traefik.http.routers.ocrmypdf-fastapi-https.middlewares=ocrmypdf-fastapi-stripprefix
+      - traefik.http.routers.ocrmypdf-fastapi-https.tls=true
+      - traefik.http.routers.ocrmypdf-fastapi-https.tls.certresolver=myresolver
+
+      # openapi.json
+      - traefik.http.routers.ocrmypdf-fastapi-openapi.rule=Host(`ocrmypdf.example.com`) && PathPrefix(`/openapi.json`)
+      - traefik.http.routers.ocrmypdf-fastapi-openapi.entrypoints=websecure
+      - traefik.http.routers.ocrmypdf-fastapi-openapi.service=ocrmypdf-fastapi
+      - traefik.http.routers.ocrmypdf-fastapi-openapi.tls=true
+      - traefik.http.routers.ocrmypdf-fastapi-openapi.tls.certresolver=myresolver
+      
+      - traefik.http.services.ocrmypdf-fastapi.loadbalancer.server.port=8000
+    mem_limit: 2G
+    cpus: 2
+networks:
+  traefik:
+    name: proxy
+    external: true
+ 
+# volumes:
+#   data:
+ 

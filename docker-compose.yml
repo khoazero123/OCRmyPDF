@@ -1,0 +1,33 @@
+services:
+  ocrmypdf-streamlit:
+    image: docker.megavn.net/ocrmypdf/ocrmypdf:latest
+    build:
+      context: .
+      dockerfile: .docker/Dockerfile
+    entrypoint: python
+    command: webservice.py
+    ports:
+      - 8501:8501
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+      - STREAMLIT_CLIENT_TOOLBAR_MODE=minimal
+      - STREAMLIT_SERVER_ENABLE_WEBSOCKET_COMPRESSION=false
+    volumes:
+      - ./misc/webservice.py:/app/misc/webservice.py
+      - ./misc/_webservice.py:/app/misc/_webservice.py
+
+  ocrmypdf-fastapi:
+    image: docker.megavn.net/ocrmypdf/ocrmypdf:latest
+    build:
+      context: .
+      dockerfile: .docker/Dockerfile
+    entrypoint: python
+    command: /app/misc/main.py
+    ports:
+      - 8000:8000
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+      - MAX_FILE_SIZE=100 # in MB
+    volumes:
+      - ./misc/main.py:/app/misc/main.py

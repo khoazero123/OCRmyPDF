@@ -35,12 +35,15 @@ def get_host_url_with_port(port: int) -> str:
         host = host_url
     return f"//{host}:{port}"  # Use the same protocol
 
-
+st.set_page_config(
+    page_title="OCRmyPDF",
+    menu_items={}
+)
 st.title("OCRmyPDF Web Service")
 
 uploaded = st.file_uploader("Upload input PDF or image", type=["pdf"], key="file")
 
-mode = st.selectbox("Mode", options=["normal", "skip-text", "force-ocr", "redo-ocr"])
+mode = st.selectbox("Mode", options=["skip-text", "normal", "force-ocr", "redo-ocr"])
 
 pages = st.text_input(
     "Pages", value="", help="Comma-separated list of pages to process"
@@ -50,7 +53,7 @@ with st.expander("Input options"):
     invalidate_digital_signatures = st.checkbox(
         "Invalidate digital signatures", value=False
     )
-    language = st.selectbox("Language", options=["eng", "deu", "fra", "spa"])
+    language = st.selectbox("Language", options=["vie", "eng", "chi_sim", "chi_tra", "vie+eng", "vie+chi_sim+chi_tra", "vie+eng+chi_sim+chi_tra", "deu", "fra", "spa"])
 
     image_dpi = st.slider(
         "Image DPI", value=300, key="image_dpi", min_value=1, max_value=5000, step=50
@@ -141,6 +144,8 @@ if uploaded:
     args = []
     if mode and mode != 'normal':
         args.append(f"--{mode}")
+    if invalidate_digital_signatures:
+        args.append("--invalidate-digital-signatures")
     if language:
         args.append(f"--language={language}")
     if not uploaded.name.lower().endswith(".pdf") and image_dpi:

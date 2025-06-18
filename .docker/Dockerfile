@@ -71,11 +71,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   pngquant \
   tesseract-ocr \
   tesseract-ocr-chi-sim \
+  tesseract-ocr-chi-tra \
   tesseract-ocr-deu \
   tesseract-ocr-eng \
   tesseract-ocr-fra \
   tesseract-ocr-por \
   tesseract-ocr-spa \
+  tesseract-ocr-vie \
   unpaper \
   && rm -rf /var/lib/apt/lists/*
 
@@ -91,6 +93,9 @@ ln -s /app/misc/webservice.py /app/webservice.py && \
 ln -s /app/misc/watcher.py /app/watcher.py
 
 ENV PATH="/app/.venv/bin:${PATH}"
+ENV TZ=Asia/Ho_Chi_Minh
+ENV STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+ENV STREAMLIT_CLIENT_TOOLBAR_MODE=minimal
 
 ENTRYPOINT ["/app/.venv/bin/ocrmypdf"]
 
